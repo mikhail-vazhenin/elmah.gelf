@@ -1,0 +1,3 @@
+syntax: glob
+src/Elmah.Gelf/obj/
+src/packages/
