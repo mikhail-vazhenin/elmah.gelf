@@ -3,35 +3,53 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json.Linq;
+using System.Net;
+using System.Globalization;
+using System.Diagnostics;
+using Elmah.Gelf.Extensions;
 
 namespace Elmah.Gelf.Converters
 {
-    public class GelfConverter : IConverter
+    public class GelfConverter : IGelfConverter
     {
         private const int ShortMessageMaxLength = 250;
         private const string GelfVersion = "1.0";
 
-        public JObject GetGelfJson(LogEventInfo logEventInfo, string facility)
+        public JObject GetGelfJson(Error error, string facility)
         {
             //Retrieve the formatted message from LogEventInfo
-            var logEventMessage = logEventInfo.FormattedMessage;
-            if (logEventMessage == null) return null;
+            if (error == null) return null;
+
+            var properties = new Dictionary<object, object>();
+            StackFrame stackFrame = null;
 
             //If we are dealing with an exception, pass exception properties to LogEventInfo properties
-            if (logEventInfo.Exception != null)
+            if (error.Exception != null)
             {
+                stackFrame = new StackTrace(error.Exception, true).GetFrame(0);
+
                 string exceptionDetail;
                 string stackDetail;
 
-                GetExceptionMessages(logEventInfo.Exception, out exceptionDetail, out stackDetail);
+                GetExceptionMessages(error.Exception, out exceptionDetail, out stackDetail);
 
-                logEventInfo.Properties.Add("ExceptionSource", logEventInfo.Exception.Source);
-                logEventInfo.Properties.Add("ExceptionMessage", exceptionDetail);
-                logEventInfo.Properties.Add("StackTrace", stackDetail);
+                properties.Add("ExceptionSource", error.Exception.Source);
+                properties.Add("ExceptionMessage", exceptionDetail);
+                properties.Add("StackTrace", stackDetail);
             }
 
+
+            properties.Add("ApplicationName", error.ApplicationName);
+            properties.Add("Detail", error.Detail);
+            properties.Add("ClientHostName", error.HostName);
+            properties.Add("Source", error.Source);
+            properties.Add("StatusCode", error.StatusCode);
+            properties.Add("ErrorType", error.Type);
+            properties.Add("WebHostMessage", error.WebHostHtmlMessage);
+            properties.Add("User", error.User);
+
             //Figure out the short message
-            var shortMessage = logEventMessage;
+            var shortMessage = error.Message;
             if (shortMessage.Length > ShortMessageMaxLength)
             {
                 shortMessage = shortMessage.Substring(0, ShortMessageMaxLength);
@@ -44,28 +62,42 @@ namespace Elmah.Gelf.Converters
                 Version = GelfVersion,
                 Host = Dns.GetHostName(),
                 ShortMessage = shortMessage,
-                FullMessage = logEventMessage,
-                Timestamp = logEventInfo.TimeStamp,
-                Level = GetSeverityLevel(logEventInfo.Level),
-                //Spec says: facility must be set by the client to "GELF" if empty
-                Facility = (string.IsNullOrEmpty(facility) ? "GELF" : facility),
-                Line = (logEventInfo.UserStackFrame != null)
-                                                 ? logEventInfo.UserStackFrame.GetFileLineNumber().ToString(
-                                                     CultureInfo.InvariantCulture)
-                                                 : string.Empty,
-                File = (logEventInfo.UserStackFrame != null)
-                                                 ? logEventInfo.UserStackFrame.GetFileName()
-                                                 : string.Empty,
+                FullMessage = error.Message,
+                Timestamp = error.Time,
+                Level = 3, //LogLevel.Error
+                Facility = (string.IsNullOrEmpty(facility) ? "GELF" : facility),   //Spec says: facility must be set by the client to "GELF" if empty
+                Line = (stackFrame != null) ? stackFrame.GetFileLineNumber().ToString(CultureInfo.InvariantCulture) : string.Empty,
+                File = (stackFrame != null) ? stackFrame.GetFileName() : string.Empty,
             };
 
             //Convert to JSON
             var jsonObject = JObject.FromObject(gelfMessage);
 
-            //Add any other interesting data to LogEventInfo properties
-            logEventInfo.Properties.Add("LoggerName", logEventInfo.LoggerName);
+            //Add any other interesting data to properties
+            //error.Properties.Add("LoggerName", error.LoggerName);
+
+            properties.Add("cookies", string.Join(Environment.NewLine, error.Cookies.ToDictionary().Select(c => string.Format("{0}={1}", c.Key, c.Value))));
+
+            foreach (var form in error.Form.ToDictionary())
+            {
+                AddAdditionalField(jsonObject, form);
+            }
+
+            properties.Add("query_string", string.Join("&", error.QueryString.ToDictionary().Select(c => string.Format("{0}={1}", c.Key, c.Value))));
+
+
+            foreach (var v in error.ServerVariables.ToDictionary())
+            {
+                AddAdditionalField(jsonObject, v);
+            }
+
+            
+
+
+
 
             //We will persist them "Additional Fields" according to Gelf spec
-            foreach (var property in logEventInfo.Properties)
+            foreach (var property in properties)
             {
                 AddAdditionalField(jsonObject, property);
             }
@@ -75,23 +107,6 @@ namespace Elmah.Gelf.Converters
 
         private static void AddAdditionalField(IDictionary<string, JToken> jObject, KeyValuePair<object, object> property)
         {
-            if (property.Key == ConverterConstants.PromoteObjectPropertiesMarker)
-            {
-                if (property.Value != null && property.Value is object)
-                {
-                    try
-                    {
-                        var jo = JObject.FromObject(property.Value);
-                        foreach (var joProp in jo)
-                        {
-                            AddAdditionalField(jObject, new KeyValuePair<object, object>(joProp.Key, joProp.Value));
-                        }
-                    }
-                    catch { }
-                }
-                return;
-            }
-
             var key = property.Key as string;
             if (key == null) return;
 
@@ -111,36 +126,6 @@ namespace Elmah.Gelf.Converters
             jObject.Add(key, value);
         }
 
-        /// <summary>
-        /// Values from SyslogSeverity enum here: http://marc.info/?l=log4net-dev&m=109519564630799
-        /// </summary>
-        /// <param name="level"></param>
-        /// <returns></returns>
-        private static int GetSeverityLevel(LogLevel level)
-        {
-            if (level == LogLevel.Debug)
-            {
-                return 7;
-            }
-            if (level == LogLevel.Fatal)
-            {
-                return 2;
-            }
-            if (level == LogLevel.Info)
-            {
-                return 6;
-            }
-            if (level == LogLevel.Trace)
-            {
-                return 6;
-            }
-            if (level == LogLevel.Warn)
-            {
-                return 4;
-            }
-
-            return 3; //LogLevel.Error
-        }
 
         /// <summary>
         /// Get the message details from all nested exceptions, up to 10 in depth.

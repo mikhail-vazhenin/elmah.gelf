@@ -6,8 +6,8 @@ using Newtonsoft.Json.Linq;
 
 namespace Elmah.Gelf.Converters
 {
-    public interface IConverter
+    public interface IGelfConverter
     {
-        JObject GetGelfJson(LogEventInfo logEventInfo, string facility);
+        JObject GetGelfJson(Error logEventInfo, string facility);
     }
 }

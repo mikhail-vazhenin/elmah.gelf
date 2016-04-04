@@ -10,6 +10,7 @@ using Elmah.Gelf.Transport;
 using Elmah.Gelf.Converters;
 using System.Net;
 using System.Linq;
+using System.Configuration;
 //using MailAttachment = System.Net.Mail.Attachment;
 
 //using ThreadPool = System.Threading.ThreadPool;
@@ -33,14 +34,14 @@ namespace Elmah.Gelf
         public string Facility { get; set; }
         public bool SendLastFormatParameter { get; set; }
 
-        public IConverter Converter { get; private set; }
+        public IGelfConverter Converter { get; private set; }
         //public DnsBase Dns { get; private set; }
 
         public ErrorGelfModule() : this(new UdpTransport(new UdpTransportClient()), new GelfConverter())
         {
         }
 
-        public ErrorGelfModule(ITransport transport, IConverter converter)
+        public ErrorGelfModule(ITransport transport, IGelfConverter converter)
         {
             //Dns = dns;
             _transport = transport;
@@ -85,10 +86,10 @@ namespace Elmah.Gelf
             // In this case, the module is as good as mute.
             //
 
-            //var config = (IDictionary)GetConfig();
+            var config = (IDictionary)GetConfig();
 
-            //if (config == null)
-            //    return;
+            if (config == null)
+                return;
 
             //
             // Extract the settings.
@@ -333,10 +334,10 @@ namespace Elmah.Gelf
         /// the settings for module.
         /// </summary>
 
-        //protected virtual object GetConfig()
-        //{
-        //    return Configuration.GetSubsection("errorMail");
-        //}
+        protected virtual object GetConfig()
+        {
+            return Configuration.GetSubsection("errorGelf");
+        }
 
         //private static string GetSetting(IDictionary config, string name)
         //{
