@@ -2,11 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Newtonsoft.Json.Linq;
 using System.Net;
 using System.Globalization;
 using System.Diagnostics;
 using Elmah.Gelf.Extensions;
+using System.IO;
 
 namespace Elmah.Gelf.Converters
 {
@@ -15,38 +15,16 @@ namespace Elmah.Gelf.Converters
         private const int ShortMessageMaxLength = 250;
         private const string GelfVersion = "1.0";
 
-        public JObject GetGelfJson(Error error, string facility)
+        public string GetGelfJson(Error error, string facility, ICollection<string> ignoredProperties = null)
         {
-            //Retrieve the formatted message from LogEventInfo
             if (error == null) return null;
 
-            var properties = new Dictionary<object, object>();
             StackFrame stackFrame = null;
-
-            //If we are dealing with an exception, pass exception properties to LogEventInfo properties
+            //If we are dealing with an exception, pass exception properties
             if (error.Exception != null)
             {
                 stackFrame = new StackTrace(error.Exception, true).GetFrame(0);
-
-                string exceptionDetail;
-                string stackDetail;
-
-                GetExceptionMessages(error.Exception, out exceptionDetail, out stackDetail);
-
-                properties.Add("ExceptionSource", error.Exception.Source);
-                properties.Add("ExceptionMessage", exceptionDetail);
-                properties.Add("StackTrace", stackDetail);
             }
-
-
-            properties.Add("ApplicationName", error.ApplicationName);
-            properties.Add("Detail", error.Detail);
-            properties.Add("ClientHostName", error.HostName);
-            properties.Add("Source", error.Source);
-            properties.Add("StatusCode", error.StatusCode);
-            properties.Add("ErrorType", error.Type);
-            properties.Add("WebHostMessage", error.WebHostHtmlMessage);
-            properties.Add("User", error.User);
 
             //Figure out the short message
             var shortMessage = error.Message;
@@ -55,57 +33,77 @@ namespace Elmah.Gelf.Converters
                 shortMessage = shortMessage.Substring(0, ShortMessageMaxLength);
             }
 
+            var stringWriter = new StringWriter();
+            JsonTextWriter writer = new JsonTextWriter(stringWriter);
+            writer.Object();
+
             //Construct the instance of GelfMessage
             //See https://github.com/Graylog2/graylog2-docs/wiki/GELF "Specification (version 1.0)"
-            var gelfMessage = new GelfMessage
-            {
-                Version = GelfVersion,
-                Host = Dns.GetHostName(),
-                ShortMessage = shortMessage,
-                FullMessage = error.Message,
-                Timestamp = error.Time,
-                Level = 3, //LogLevel.Error
-                Facility = (string.IsNullOrEmpty(facility) ? "GELF" : facility),   //Spec says: facility must be set by the client to "GELF" if empty
-                Line = (stackFrame != null) ? stackFrame.GetFileLineNumber().ToString(CultureInfo.InvariantCulture) : string.Empty,
-                File = (stackFrame != null) ? stackFrame.GetFileName() : string.Empty,
-            };
+            //Standard specification field
+            writer.Member("version").String(GelfVersion);
+            writer.Member("host").String(Dns.GetHostName());
+            writer.Member("short_message").String(shortMessage);
+            writer.Member("full_message").String(error.Message);
+            writer.Member("timestamp").String(error.Time);
+            writer.Member("level").String(3.ToString());
+            writer.Member("facility").String((string.IsNullOrEmpty(facility) ? "GELF" : facility));
+            writer.Member("line").String((stackFrame != null) ? stackFrame.GetFileLineNumber().ToString(CultureInfo.InvariantCulture) : string.Empty);
+            writer.Member("file").String((stackFrame != null) ? stackFrame.GetFileName() : string.Empty);
 
-            //Convert to JSON
-            var jsonObject = JObject.FromObject(gelfMessage);
+            var properties = new Dictionary<object, object>();
 
-            //Add any other interesting data to properties
-            //error.Properties.Add("LoggerName", error.LoggerName);
+            //Filling elmah properties
 
-            properties.Add("cookies", string.Join(Environment.NewLine, error.Cookies.ToDictionary().Select(c => string.Format("{0}={1}", c.Key, c.Value))));
+            string exceptionDetail;
+            string stackDetail;
+            GetExceptionMessages(error.Exception, out exceptionDetail, out stackDetail);
+            properties.Add("ExceptionSource", error.Exception.Source);
+            properties.Add("ExceptionMessage", exceptionDetail);
+            properties.Add("StackTrace", stackDetail);
 
-            foreach (var form in error.Form.ToDictionary())
-            {
-                AddAdditionalField(jsonObject, form);
-            }
 
-            properties.Add("query_string", string.Join("&", error.QueryString.ToDictionary().Select(c => string.Format("{0}={1}", c.Key, c.Value))));
+            properties.Add("application", error.ApplicationName);
+            properties.Add("host", error.HostName);
+            properties.Add("type", error.Type);
+            properties.Add("message", error.Message);
+            properties.Add("source", error.Source);
+            properties.Add("detail", error.Detail);
+            properties.Add("user", error.User);
+            properties.Add("time", error.Time);
+            properties.Add("statusCode", error.StatusCode);
+            properties.Add("webHostHtmlMessage", error.WebHostHtmlMessage);
 
+            properties.Add("queryString", error.QueryString.ToString("&", (k, v) => string.Format("{0}={1}", k, v)));
+            properties.Add("form", error.Form.ToString(Environment.NewLine, (k, v) => string.Format("{0}={1}", k, v)));
+            properties.Add("cookies", error.Cookies.ToString(Environment.NewLine, (k, v) => string.Format("{0}={1}", k, v)));
 
             foreach (var v in error.ServerVariables.ToDictionary())
             {
-                AddAdditionalField(jsonObject, v);
+                properties.Add(v.Key, v.Value);
             }
 
-            
 
 
 
-
-            //We will persist them "Additional Fields" according to Gelf spec
-            foreach (var property in properties)
+            //Property filtering if is necessary
+            if (ignoredProperties != null && ignoredProperties.Any())
             {
-                AddAdditionalField(jsonObject, property);
+                properties = properties.Where(p => !ignoredProperties.Contains(p.Key.ToString())).ToDictionary(k => k.Key, v => v.Value);
             }
 
-            return jsonObject;
+            //Convert to JSON
+            //We will persist them "Additional Fields" according to Gelf spec
+            foreach (var p in properties)
+            {
+                AddAdditionalField(writer, p);
+            }
+
+            writer.Pop();
+
+            return stringWriter.ToString();
         }
 
-        private static void AddAdditionalField(IDictionary<string, JToken> jObject, KeyValuePair<object, object> property)
+        private void AddAdditionalField(JsonTextWriter writer, KeyValuePair<object, object> property)
         {
             var key = property.Key as string;
             if (key == null) return;
@@ -119,11 +117,9 @@ namespace Elmah.Gelf.Converters
             if (!key.StartsWith("_", StringComparison.OrdinalIgnoreCase))
                 key = "_" + key;
 
-            JToken value = null;
-            if (property.Value != null)
-                value = JToken.FromObject(property.Value);
-
-            jObject.Add(key, value);
+            var value = property.Value != null ? property.Value.ToString() : null;
+            if (!string.IsNullOrEmpty(value))
+                writer.Member(key).String(property.Value.ToString());
         }
 
 

@@ -1,3 +1,5 @@
 syntax: glob
 src/Elmah.Gelf/obj/
 src/packages/
+src/Elmah.Gelf/bin/
+src/.vs/config/applicationhost.config

@@ -6,6 +6,7 @@ using System.Text;
 
 namespace Elmah.Gelf
 {
+
     internal static class Configuration
     {
         internal const string GroupName = "elmah";
