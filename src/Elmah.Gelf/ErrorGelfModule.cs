@@ -65,7 +65,7 @@ namespace Elmah.Gelf
             // Extract the settings.
             _facility = GetSetting(config, "facility");
             _reportAsynchronously = Convert.ToBoolean(GetSetting(config, "async", bool.TrueString));
-            var ignored = GetSetting(config, "ignored", string.Empty);
+            var ignored = GetSetting(config, "ignoredProperties", string.Empty);
             if (!string.IsNullOrEmpty(ignored)) _ignoredProperties = ignored.Split(';');
 
             if (!Uri.TryCreate(GetSetting(config, "endpoint"), UriKind.RelativeOrAbsolute, out _endpoint))
