@@ -12,7 +12,9 @@ Configure it
 #!xml
 
 <configuration>
- 
+ ...
+
+ ...
 <configuration>
 ```
 
