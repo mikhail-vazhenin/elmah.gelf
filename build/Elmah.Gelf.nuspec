@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+    <metadata>
+        <id>Elmah.Gelf</id>
+        <version>$version$</version>
+        <title>Elmah module for GrayLog</title>
+        <authors>Mikhail Vazhenin</authors>
+        <projectUrl>https://bitbucket.org/Vazhenin/elmah.gelf</projectUrl>
+        <requireLicenseAcceptance>false</requireLicenseAcceptance>
+        <description>Elmah module for sending alert messages to GrayLog server in Gelf format via UDP</description>
+        <tags>graylog gelf elmah</tags>
+        <dependencies>
+            <dependency id="elmah.corelibrary" version="1.2.2" />
+        </dependencies>
+    </metadata>
+    <files>
+        <file src="..\src\Elmah.Gelf\bin\Release\Elmah.Gelf.dll" target="lib\net\Elmah.Gelf.dll" />
+    </files>
+</package>

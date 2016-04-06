@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("Elmah.Gelf")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("Elmah module for sending alert messages to GrayLog server in Gelf format via UDP")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("Elmah.Gelf")]
