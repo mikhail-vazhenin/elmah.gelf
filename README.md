@@ -34,7 +34,7 @@ Configure it
  </system.webServer>
  ...
   <elmah>
-    <errorGelf endpoint="udp://127.0.0.1:12201" facility="Gelf" ignoredProperties="ALL_RAW ALL_HTTP" async="false"/>
+    <errorGelf endpoint="udp://127.0.0.1:12201" facility="Gelf" ignoredProperties="ALL_RAW ALL_HTTP" />
   </elmah>
 <configuration>
 ```
