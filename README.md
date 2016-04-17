@@ -42,3 +42,7 @@ Configure it
 ### Result
 We send alert messages to collect error logs on GrayLog server. 
 This allows us to take monitoring, statistic and other usefull analytic functions using Lucene syntax.
+
+The result will look as follows
+
+![1.png](https://bitbucket.org/repo/azz59X/images/4195717667-1.png)
