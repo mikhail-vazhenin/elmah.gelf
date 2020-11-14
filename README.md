@@ -8,8 +8,7 @@ Elmah module for sending alert messages to GrayLog server in Gelf format via UDP
 Download nuget package Elmah.Gelf
 
 Configure it
-```
-#!xml
+```xml
 
 <configuration>
  ...
